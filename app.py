@@ -186,7 +186,7 @@ def _headers():
 
 
 def gql(query, variables=None):
-    r = requests.post(API, json={"query": query, "variables": variables or {}}, headers=_headers())
+    r = requests.post(API, json={"query": query, "variables": variables or {}}, headers=_headers(), timeout=25)
     j = r.json()
     if "errors" in j:
         raise RuntimeError(json.dumps(j["errors"]))
@@ -228,6 +228,41 @@ def get_devis(item_id):
     return items[0]
 
 
+def get_next_quote_sequence():
+    """Find the highest quote sequence number used so far on the Devis board
+    and return the next one. Paginates through all items since a board can
+    hold more than one page."""
+    max_seq = 0
+    cursor = None
+    while True:
+        q = """
+        query ($boardId: ID!, $cursor: String) {
+          boards(ids: [$boardId]) {
+            items_page(limit: 100, cursor: $cursor) {
+              cursor
+              items {
+                column_values(ids: ["numeric_mm5h5hfg"]) { text }
+              }
+            }
+          }
+        }
+        """
+        data = gql(q, {"boardId": DEVIS_BOARD, "cursor": cursor})
+        page = data["boards"][0]["items_page"]
+        for it in page["items"]:
+            for cv in it["column_values"]:
+                txt = cv.get("text")
+                if txt and txt.strip():
+                    try:
+                        max_seq = max(max_seq, int(float(txt)))
+                    except Exception:
+                        pass
+        cursor = page.get("cursor")
+        if not cursor:
+            break
+    return max_seq + 1
+
+
 def get_catalog_items(ids):
     result = {}
     if ids:
@@ -255,32 +290,27 @@ def generate_and_upload(item_id):
     conditions_paiement = dcv.get("dropdown_mm5gdv6j", {}).get("text") or ""
     conditions_livraison = dcv.get("dropdown_mm5gpdje", {}).get("text") or ""
     date_expiration = dcv.get("date_mm5gbfg1", {}).get("text") or ""
-    autonumber_col = dcv.get("autonumber_mm5g3aew", {})
-    quote_number_raw = autonumber_col.get("text") or ""
 
     try:
         duree_engagement = max(1, int(float(duree_engagement)))
     except Exception:
         duree_engagement = 1
 
-    quote_number = None
-    digits = "".join(ch for ch in quote_number_raw if ch.isdigit())
-    if digits:
-        quote_number = f"Q-{int(digits):07d}"
+    # Monday's native "auto_number" column type cannot be read back through the
+    # API (it has no corresponding GraphQL value type), so we maintain our own
+    # sequential quote number in a plain numeric column instead. Assigned once
+    # per quote, then reused on every regeneration.
+    existing_seq = dcv.get("numeric_mm5h5hfg", {}).get("text") or ""
+    if existing_seq.strip():
+        seq_number = int(float(existing_seq))
     else:
-        # "text" can come back empty for auto_number columns via the generic
-        # column_values query; fall back to parsing the raw "value" JSON.
-        raw_value = autonumber_col.get("value")
-        if raw_value:
-            try:
-                parsed = json.loads(raw_value)
-                num = parsed.get("value") if isinstance(parsed, dict) else parsed
-                if num is not None:
-                    quote_number = f"Q-{int(num):07d}"
-            except Exception:
-                pass
-    if not quote_number:
-        quote_number = quote_number_raw or "Q-XXXXXXX"
+        seq_number = get_next_quote_sequence()
+        gql("""
+        mutation ($itemId: ID!, $boardId: ID!, $columnValues: JSON!) {
+          change_multiple_column_values(item_id: $itemId, board_id: $boardId, column_values: $columnValues) { id }
+        }
+        """, {"itemId": item_id, "boardId": DEVIS_BOARD, "columnValues": json.dumps({"numeric_mm5h5hfg": seq_number})})
+    quote_number = f"Q-{seq_number:07d}"
 
     vat_rate = 0.20 if "20%" in regime_tva else 0.0
 
@@ -635,6 +665,7 @@ def generate_and_upload(item_id):
         headers={"Authorization": MONDAY_API_TOKEN},
         data={"query": upload_query, "variables": json.dumps(variables), "map": json.dumps(map_field)},
         files={"file": (f"{quote_number}.pdf", pdf_bytes, "application/pdf")},
+        timeout=60,
     )
 
     # ---------- Auto-fill fields that can be derived instead of typed in ----------
@@ -727,6 +758,8 @@ def webhook():
         result = generate_and_upload(int(item_id))
         return jsonify({"status": "ok", "result": result}), 200
     except Exception as e:
+        import traceback
+        traceback.print_exc()  # ensure the full stack trace shows up in Render logs
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
