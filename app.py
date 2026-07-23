@@ -95,7 +95,7 @@ def get_labels(langue):
             "net_total_box": "Net Total",
             "tax_box": "Tax",
             "total_including_tax": "Total Including Tax",
-            "agreement_title": "AGREEMENT",
+            "agreement_title": "Bon pour accord",
             "date_field": "Date:",
             "signature": "Signature:",
             "name": "Name:",
@@ -255,16 +255,31 @@ def generate_and_upload(item_id):
     conditions_paiement = dcv.get("dropdown_mm5gdv6j", {}).get("text") or ""
     conditions_livraison = dcv.get("dropdown_mm5gpdje", {}).get("text") or ""
     date_expiration = dcv.get("date_mm5gbfg1", {}).get("text") or ""
-    quote_number_raw = dcv.get("autonumber_mm5g3aew", {}).get("text") or ""
+    autonumber_col = dcv.get("autonumber_mm5g3aew", {})
+    quote_number_raw = autonumber_col.get("text") or ""
 
     try:
         duree_engagement = max(1, int(float(duree_engagement)))
     except Exception:
         duree_engagement = 1
 
-    try:
-        quote_number = f"Q-{int(quote_number_raw):07d}"
-    except Exception:
+    quote_number = None
+    digits = "".join(ch for ch in quote_number_raw if ch.isdigit())
+    if digits:
+        quote_number = f"Q-{int(digits):07d}"
+    else:
+        # "text" can come back empty for auto_number columns via the generic
+        # column_values query; fall back to parsing the raw "value" JSON.
+        raw_value = autonumber_col.get("value")
+        if raw_value:
+            try:
+                parsed = json.loads(raw_value)
+                num = parsed.get("value") if isinstance(parsed, dict) else parsed
+                if num is not None:
+                    quote_number = f"Q-{int(num):07d}"
+            except Exception:
+                pass
+    if not quote_number:
         quote_number = quote_number_raw or "Q-XXXXXXX"
 
     vat_rate = 0.20 if "20%" in regime_tva else 0.0
