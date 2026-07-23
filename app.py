@@ -52,7 +52,7 @@ BANK_DETAILS = [
 ]
 
 FOOTER_LEGAL = (
-    "Intrasense SA | Agence : Montpellier | SIRET 452 479 504 00048\n"
+    "Intrasense SA | Agences : Montpellier, Shanghai | SIRET 452 479 504 00048\n"
     "Siège Social : 1231 avenue du Mondial 98 34000 Montpellier, France | Certification ISO 13485\n"
     "Capital Social 2 566 370,70 euros | RCS Montpellier 452 479 504 | APE 5829C | TVA Intracommunautaire FR 57 452 479 504\n"
     "Tél.: +33 (0) 467 130 130 | Fax: +33 (0) 467 130 132 | www.intrasense.fr | adv@intrasense.fr"
@@ -74,11 +74,11 @@ def get_labels(langue):
             "engagement_duration": "Engagement duration:",
             "years_suffix": "year(s)",
             "section_subscription": "SOFTWARE & SERVICES WITH SUBSCRIPTION",
-            "section_onetime": "PROFESSIONAL SERVICES & ONE-TIME PRODUCTS",
+            "section_onetime": "ITPS & ONE-TIME PRODUCTS",
             "section_subscription_optional": "OPTIONS - SOFTWARE & SERVICES WITH SUBSCRIPTION",
-            "section_onetime_optional": "OPTIONS - PROFESSIONAL SERVICES & ONE-TIME PRODUCTS",
-            "rec_headers": ["Product", "Description", "Qty", "Unit price", "Discount", "Duration", "Annual cost", "Total cost"],
-            "one_headers": ["Product", "Description", "Qty", "Unit price", "Discount", "Total net"],
+            "section_onetime_optional": "OPTIONS - ITPS & ONE-TIME PRODUCTS",
+            "rec_headers": ["Product", "Description", "Qty", "List price", "Discount", "Duration", "Annual cost", "Total cost"],
+            "one_headers": ["Product", "Description", "Qty", "List price", "Discount", "Total net"],
             "option_note": "Lines marked \u201cOptions\u201d are not included in the firm total below; they will be billed separately if the client confirms them.",
             "recap_title": "MULTI-YEAR CLIENT SUMMARY",
             "recap_col_label": "Item",
@@ -134,14 +134,14 @@ def get_labels(langue):
         "engagement_duration": "Durée d'engagement :",
         "years_suffix": "an(s)",
         "section_subscription": "PRODUITS & SERVICES AVEC ABONNEMENT",
-        "section_onetime": "SERVICES & PRODUITS À COÛT UNIQUE",
-        "section_subscription_optional": "OPTIONS - SERVICES & PRODUITS AVEC ABONNEMENT",
-        "section_onetime_optional": "OPTIONS - SERVICES & PRODUITS À COÛT UNIQUE",
-        "rec_headers": ["Produit", "Description", "Qté", "PU", "Remise", "Durée", "Coût annuel", "Coût total"],
-        "one_headers": ["Produit", "Description", "Qté", "PU", "Remise", "Total net"],
+        "section_onetime": "ITPS & PRODUITS À COÛT UNIQUE",
+        "section_subscription_optional": "OPTIONS - PRODUITS & SERVICES AVEC ABONNEMENT",
+        "section_onetime_optional": "OPTIONS - ITPS & PRODUITS À COÛT UNIQUE",
+        "rec_headers": ["Produit", "Description", "Qté", "Px liste", "Remise", "Durée", "Coût annuel", "Coût total"],
+        "one_headers": ["Produit", "Description", "Qté", "Px liste", "Remise", "Total net"],
         "option_note": "Les lignes « Options » ne sont pas incluses dans le total ferme ci-dessous ; elles seront facturées séparément si le client les confirme.",
         "recap_title": "RÉCAPITULATIF PLURIANNUEL CLIENT",
-        "recap_col_label": "Type de coûts",
+        "recap_col_label": "Poste",
         "recap_row_onetime": "Coût unique HT",
         "recap_row_recurring": "Coût récurrent HT",
         "recap_row_total_ht": "Total HT",
@@ -155,7 +155,7 @@ def get_labels(langue):
         "net_total_box": "Total net",
         "tax_box": "TVA",
         "total_including_tax": "Total TTC",
-        "agreement_title": "BON POUR ACCORD",
+        "agreement_title": "ACCORD",
         "date_field": "Date :",
         "signature": "Signature :",
         "name": "Nom :",
@@ -196,8 +196,8 @@ def gql(query, variables=None):
     return j["data"]
 
 
-def money(v, currency="EUR"):
-    return f"{currency} {v:,.2f}".replace(",", " ").replace(".", ",")
+def money(v, currency="\u20ac"):
+    return f"{v:,.2f} {currency}".replace(",", " ").replace(".", ",")
 
 
 def cv_map(column_values):
@@ -624,8 +624,75 @@ def generate_and_upload(item_id):
         data={"query": upload_query, "variables": json.dumps(variables), "map": json.dumps(map_field)},
         files={"file": (f"{quote_number}.pdf", pdf_bytes, "application/pdf")},
     )
+
+    # ---------- Auto-fill fields that can be derived instead of typed in ----------
+    firm_lines = firm_recurring + firm_onetime
+    total_list = sum(l["list_price"] * l["qty"] for l in firm_lines)
+    remise_globale_pct = round(((total_list - net_ferme) / total_list * 100), 2) if total_list > 0 else 0
+
+    update_values = {
+        "numeric_mm5a47pa": net_ferme,       # Montant total (EUR) — firm amount, options excluded
+        "numeric_mm5g350s": remise_globale_pct,  # Remise globale (%) — blended discount on firm lines
+    }
+    gql("""
+    mutation ($itemId: ID!, $boardId: ID!, $columnValues: JSON!) {
+      change_multiple_column_values(item_id: $itemId, board_id: $boardId, column_values: $columnValues) { id }
+    }
+    """, {"itemId": item_id, "boardId": DEVIS_BOARD, "columnValues": json.dumps(update_values)})
+
+    auto_link_account(item_id)
+
     return {"quote_number": quote_number, "n_lines": len(lines), "net_ferme": net_ferme,
-            "ttc_ferme": ttc_ferme, "upload_result": resp.json()}
+            "remise_globale_pct": remise_globale_pct, "ttc_ferme": ttc_ferme, "upload_result": resp.json()}
+
+
+def auto_link_account(item_id):
+    """If the quote's 'Compte' field is empty, copy it from the linked
+    opportunity's Account, so nobody has to fill it in twice."""
+    q = """
+    query ($ids: [ID!]) {
+      items(ids: $ids) {
+        column_values(ids: ["board_relation_mm5abanw", "board_relation_mm5as5kj"]) {
+          id
+          ... on BoardRelationValue { linked_item_ids }
+        }
+      }
+    }
+    """
+    data = gql(q, {"ids": [item_id]})
+    items = data["items"]
+    if not items:
+        return
+    cv = cv_map(items[0]["column_values"])
+    compte_ids = cv.get("board_relation_mm5abanw", {}).get("linked_item_ids") or []
+    opp_ids = cv.get("board_relation_mm5as5kj", {}).get("linked_item_ids") or []
+    if compte_ids or not opp_ids:
+        return  # already set, or no linked opportunity to copy from
+
+    q2 = """
+    query ($ids: [ID!]) {
+      items(ids: $ids) {
+        column_values(ids: ["board_relation_mm5frd3t"]) {
+          id
+          ... on BoardRelationValue { linked_item_ids }
+        }
+      }
+    }
+    """
+    data2 = gql(q2, {"ids": [opp_ids[0]]})
+    opp_items = data2["items"]
+    if not opp_items:
+        return
+    account_ids = cv_map(opp_items[0]["column_values"]).get("board_relation_mm5frd3t", {}).get("linked_item_ids") or []
+    if not account_ids:
+        return
+
+    gql("""
+    mutation ($itemId: ID!, $boardId: ID!, $columnValues: JSON!) {
+      change_multiple_column_values(item_id: $itemId, board_id: $boardId, column_values: $columnValues) { id }
+    }
+    """, {"itemId": item_id, "boardId": DEVIS_BOARD,
+          "columnValues": json.dumps({"board_relation_mm5abanw": {"item_ids": account_ids}})})
 
 
 @app.route("/webhook", methods=["POST"])
