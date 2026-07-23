@@ -417,17 +417,32 @@ def generate_and_upload(item_id):
                       va="center", ha="left", weight="bold")
 
         def draw_logo():
-            # Drawn natively (no embedded image file) so there is nothing large
-            # to copy/paste and nothing that can get corrupted in transit.
-            logo_ax = fig.add_axes([0.06, 0.905, 0.30, 0.06])
-            logo_ax.set_xlim(0, 10)
-            logo_ax.set_ylim(0, 2)
-            logo_ax.axis("off")
-            logo_ax.text(0, 1, "intra", fontsize=22, weight="bold", color="#3a3d42", va="center", ha="left")
-            circle = plt.Circle((4.6, 1), 1.15, color="#2a8fd6")
-            logo_ax.add_patch(circle)
-            logo_ax.text(4.6, 1, "sense", fontsize=15, weight="bold", color="white", va="center", ha="center")
-            logo_ax.text(6.1, 1, "DUOnco", fontsize=13, weight="bold", color="#1a3d5c", va="center", ha="left")
+            # Real logo files, uploaded directly to the repo as binary PNGs
+            # (never pasted as text) so there is nothing large to corrupt.
+            # Falls back to a simple drawn version if the files are missing
+            # or unreadable, so a bad/missing logo never breaks the quote.
+            try:
+                is_img = mpimg.imread("logo_is.png")
+                is_ax = fig.add_axes([0.06, 0.905, 0.20, 0.065])
+                is_ax.imshow(is_img)
+                is_ax.axis("off")
+            except Exception:
+                logo_ax = fig.add_axes([0.06, 0.905, 0.20, 0.06])
+                logo_ax.set_xlim(0, 10)
+                logo_ax.set_ylim(0, 2)
+                logo_ax.axis("off")
+                logo_ax.text(0, 1, "intra", fontsize=22, weight="bold", color="#3a3d42", va="center", ha="left")
+                circle = plt.Circle((4.6, 1), 1.15, color="#2a8fd6")
+                logo_ax.add_patch(circle)
+                logo_ax.text(4.6, 1, "sense", fontsize=15, weight="bold", color="white", va="center", ha="center")
+
+            try:
+                duonco_img = mpimg.imread("logo_duonco.png")
+                duonco_ax = fig.add_axes([0.29, 0.918, 0.16, 0.03])
+                duonco_ax.imshow(duonco_img)
+                duonco_ax.axis("off")
+            except Exception:
+                pass
 
         def new_page():
             nonlocal fig, y
@@ -490,12 +505,12 @@ def generate_and_upload(item_id):
                 # left-aligned; numeric/money columns are right-aligned so
                 # figures line up and are easier to scan.
                 align = "left" if c < text_cols else "right"
-                cell.set_text_props(va="center", ha=align)
                 if r == 0:
                     cell.set_facecolor(BLUE)
-                    cell.set_text_props(color="white", weight="bold", va="center", ha=align)
+                    cell.set_text_props(color="white", weight="bold", va="center", ha="center")
                 else:
                     cell.set_facecolor("white")
+                    cell.set_text_props(va="center", ha=align)
             return bottom - 0.015
 
         # Column layout (fractions of the 0.88-wide table, i.e. ~6.4in usable):
