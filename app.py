@@ -242,25 +242,31 @@ def generate_and_upload(item_id):
         fig.text(0.06, y, f"Durée d'engagement : {duree_engagement} an(s)", fontsize=8.5)
         y -= 0.03
 
+        PAGE_H_IN = 11.69
+        ROW_H_IN = 0.30  # fixed absolute row height (comfortable for 7.5pt text)
+
         def draw_table(y_top, title, rows, headers, col_widths):
             bar(y_top, 0.022, title, fontsize=9)
             y_table_top = y_top - 0.022
-            row_h = 0.02
-            table_h = row_h * (len(rows) + 1)
-            ax = fig.add_axes([0.06, y_table_top - table_h, 0.88, table_h])
+            n_rows = len(rows) + 1
+            table_h_frac = (ROW_H_IN * n_rows) / PAGE_H_IN
+            bottom = y_table_top - table_h_frac
+            ax = fig.add_axes([0.06, bottom, 0.88, table_h_frac])
             ax.axis("off")
             tbl = ax.table(cellText=rows, colLabels=headers, cellLoc="left",
-                            colWidths=col_widths, loc="top")
+                            colWidths=col_widths, loc="center")
             tbl.auto_set_font_size(False)
             tbl.set_fontsize(7.5)
+            row_frac = 1.0 / n_rows
             for (r, c), cell in tbl.get_celld().items():
+                cell.set_height(row_frac)
                 cell.set_edgecolor("#cccccc")
                 if r == 0:
                     cell.set_facecolor(BLUE)
                     cell.set_text_props(color="white", weight="bold")
                 else:
                     cell.set_facecolor("white")
-            return y_table_top - table_h - 0.012
+            return bottom - 0.015
 
         def recurring_rows(ls):
             rows = []
