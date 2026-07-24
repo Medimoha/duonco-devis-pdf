@@ -90,7 +90,7 @@ def get_labels(langue):
             "net_total_box": "Net Total",
             "tax_box": "Tax",
             "total_including_tax": "Total Including Tax",
-            "agreement_title": "Bon pour accord",
+            "agreement_title": "Agreement",
             "date_field": "Date:",
             "signature": "Signature:",
             "name": "Name:",
