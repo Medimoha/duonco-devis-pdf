@@ -182,6 +182,12 @@ def generate_contract():
         { "payload": { "inboundFieldValues": {...}, "itemId": ..., "boardId": ... } }
     """
     payload = request.json or {}
+
+    # Étape de vérification obligatoire lors de la création du webhook côté Monday :
+    # Monday envoie {"challenge": "..."} et attend exactement la même valeur en retour.
+    if "challenge" in payload:
+        return jsonify({"challenge": payload["challenge"]})
+
     item_id = payload.get("payload", {}).get("itemId") or payload.get("itemId")
     board_id = payload.get("payload", {}).get("boardId") or payload.get("boardId")
 
