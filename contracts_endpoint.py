@@ -177,9 +177,10 @@ def upload_file_to_column(item_id: int, board_id: int, column_id: str, file_path
 @contracts_bp.route("/generate-contract", methods=["POST"])
 def generate_contract():
     """
-    Webhook appelé par le bouton "Générer le contrat" du board Monday.
-    Payload attendu (format standard des automatisations "when button clicked"):
-        { "payload": { "inboundFieldValues": {...}, "itemId": ..., "boardId": ... } }
+    Webhook natif Monday abonné au changement de la colonne bouton "Générer le contrat"
+    (créé via la mutation create_webhook, event=change_specific_column_value).
+    Format réel envoyé par Monday :
+        { "event": { "pulseId": ..., "boardId": ..., "columnId": ..., ... } }
     """
     payload = request.json or {}
 
@@ -188,8 +189,17 @@ def generate_contract():
     if "challenge" in payload:
         return jsonify({"challenge": payload["challenge"]})
 
-    item_id = payload.get("payload", {}).get("itemId") or payload.get("itemId")
-    board_id = payload.get("payload", {}).get("boardId") or payload.get("boardId")
+    event = payload.get("event", {})
+    item_id = (
+        event.get("pulseId")
+        or payload.get("payload", {}).get("itemId")
+        or payload.get("itemId")
+    )
+    board_id = (
+        event.get("boardId")
+        or payload.get("payload", {}).get("boardId")
+        or payload.get("boardId")
+    )
 
     if not item_id:
         return jsonify({"error": "itemId manquant dans le payload"}), 400
