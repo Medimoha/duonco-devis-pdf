@@ -27,6 +27,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
+from contracts_endpoint import contracts_bp
+app.register_blueprint(contracts_bp)
 
 API = "https://api.monday.com/v2"
 API_FILE = "https://api.monday.com/v2/file"
