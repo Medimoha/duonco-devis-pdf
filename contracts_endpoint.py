@@ -81,6 +81,9 @@ def get_item_values(item_id: int) -> dict:
           id
           text
           value
+          ... on MirrorValue {
+            display_value
+          }
         }
       }
     }
@@ -88,7 +91,9 @@ def get_item_values(item_id: int) -> dict:
     data = monday_query(query, {"itemId": [item_id]})
     values = {}
     for cv in data["items"][0]["column_values"]:
-        values[cv["id"]] = cv["text"]
+        # Les mirror columns qui pointent vers le "Nom" d'un item lié renvoient
+        # une valeur vide dans `text` : la vraie valeur est dans `display_value`.
+        values[cv["id"]] = cv.get("display_value") or cv.get("text") or ""
     return values
 
 
