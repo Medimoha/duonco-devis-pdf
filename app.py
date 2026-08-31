@@ -286,7 +286,15 @@ def generate_and_upload(item_id):
     duree_engagement = dcv.get("numeric_mm5gddnv", {}).get("text") or "1"
     conditions_paiement = dcv.get("dropdown_mm5gdv6j", {}).get("text") or ""
     conditions_livraison = dcv.get("dropdown_mm5gpdje", {}).get("text") or ""
-    date_expiration = dcv.get("date_mm5gbfg1", {}).get("text") or ""
+    # "Date d'expiration" est une colonne de type timeline (plage from/to),
+    # id timerange_mm5j5scs - on n'affiche que la borne de fin. L'ancien id
+    # "date_mm5gbfg1" ne correspond a aucune colonne du board (colonne
+    # renommee/recreee en type timeline depuis), d'ou le champ toujours vide.
+    try:
+        _exp_value = json.loads(dcv.get("timerange_mm5j5scs", {}).get("value") or "{}")
+        date_expiration = _exp_value.get("to") or ""
+    except Exception:
+        date_expiration = ""
 
     try:
         duree_engagement = max(1, int(float(duree_engagement)))
