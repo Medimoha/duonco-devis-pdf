@@ -295,6 +295,11 @@ def generate_and_upload(item_id):
         date_expiration = _exp_value.get("to") or ""
     except Exception:
         date_expiration = ""
+    # Affichage localise : jj/mm/aaaa en francais, aaaa-mm-jj (ISO) en anglais.
+    if date_expiration and langue != "English":
+        _parts = date_expiration.split("-")
+        if len(_parts) == 3:
+            date_expiration = f"{_parts[2]}/{_parts[1]}/{_parts[0]}"
 
     try:
         duree_engagement = max(1, int(float(duree_engagement)))
